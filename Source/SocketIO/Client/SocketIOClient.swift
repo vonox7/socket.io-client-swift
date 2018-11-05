@@ -213,7 +213,7 @@ open class SocketIOClient : NSObject, SocketIOClientSpec {
     /// - parameter items: The items to send with this event. May be left out.
     open func emit(_ event: String, _ items: SocketData...) {
         do {
-            try emit(event, with: items.map({ try $0.socketRepresentation() }))
+            try emit(event, with: items.map({ try $0.socketRepresentation() }), completion: {})
         } catch {
             DefaultSocketLogger.Logger.error("Error creating socketRepresentation for emit: \(event), \(items)",
                                              type: logType)
@@ -221,7 +221,7 @@ open class SocketIOClient : NSObject, SocketIOClientSpec {
             handleClientEvent(.error, data: [event, items, error])
         }
     }
-
+    
     /// Send an event to the server, with optional data items and write completion handler.
     ///
     /// If an error occurs trying to transform `items` into their socket representation, a `SocketClientEvent.error`
@@ -247,9 +247,9 @@ open class SocketIOClient : NSObject, SocketIOClientSpec {
     /// - parameter items: The items to send with this event. Send an empty array to send no data.
     @objc
     open func emit(_ event: String, with items: [Any]) {
-        emit([event] + items)
+        emit([event] + items, completion: {})
     }
-
+    
     /// Same as emit, but meant for Objective-C
     ///
     /// - parameter event: The event to send.
@@ -313,22 +313,15 @@ open class SocketIOClient : NSObject, SocketIOClientSpec {
         return createOnAck([event] + items)
     }
 
-    func emit(_ data: [Any],
-              ack: Int? = nil,
-              binary: Bool = true,
-              isAck: Bool = false,
-              completion: @escaping () -> () = {}
-    ) {
+    func emit(_ data: [Any], ack: Int? = nil, binary: Bool = true, isAck: Bool = false, completion: (() -> ())? = nil) {
         // wrap the completion handler so it always runs async via handlerQueue
         let wrappedCompletion = {[weak self] in
             guard let this = self else { return }
-            this.manager?.handleQueue.async {
-                completion()
-            }
+            this.manager?.handleQueue.async { completion?() }
         }
-
+        
         guard status == .connected else {
-            wrappedCompletion()
+            wrappedCompletion();
             handleClientEvent(.error, data: ["Tried emitting when not connected"])
             return
         }
@@ -338,7 +331,7 @@ open class SocketIOClient : NSObject, SocketIOClientSpec {
 
         DefaultSocketLogger.Logger.log("Emitting: \(str), Ack: \(isAck)", type: logType)
 
-        manager?.engine?.send(str, withData: packet.binary, completion: wrappedCompletion)
+        manager?.engine?.send(str, withData: packet.binary, completion: completion != nil ? wrappedCompletion : nil)
     }
 
     /// Call when you wish to tell the server that you've received the event for `ack`.
