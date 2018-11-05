@@ -49,7 +49,7 @@ open class SocketEngine : NSObject, URLSessionDelegate, SocketEnginePollable, So
     /// A queue of engine.io messages waiting for POSTing
     ///
     /// **You should not touch this directly**
-    public var postWait = [Post]()
+    public var postWait = [String]()
 
     /// `true` if there is an outstanding poll. Trying to poll before the first is done will cause socket.io to
     /// disconnect us.
@@ -346,7 +346,7 @@ open class SocketEngine : NSObject, URLSessionDelegate, SocketEnginePollable, So
         if polling {
             disconnectPolling(reason: reason)
         } else {
-            sendWebSocketMessage("", withType: .close, withData: [], completion: {})
+            sendWebSocketMessage("", withType: .close, withData: [])
             closeOutEngine(reason: reason)
         }
     }
@@ -354,7 +354,7 @@ open class SocketEngine : NSObject, URLSessionDelegate, SocketEnginePollable, So
     // We need to take special care when we're polling that we send it ASAP
     // Also make sure we're on the emitQueue since we're touching postWait
     private func disconnectPolling(reason: String) {
-        postWait.append((String(SocketEnginePacketType.close.rawValue), {}))
+        postWait.append(String(SocketEnginePacketType.close.rawValue))
 
         doRequest(for: createRequestForPostWithPostWait()) {_, _, _ in }
         closeOutEngine(reason: reason)
@@ -372,7 +372,7 @@ open class SocketEngine : NSObject, URLSessionDelegate, SocketEnginePollable, So
 
         DefaultSocketLogger.Logger.log("Switching to WebSockets", type: SocketEngine.logType)
 
-        sendWebSocketMessage("", withType: .upgrade, withData: [], completion: {})
+        sendWebSocketMessage("", withType: .upgrade, withData: [])
         polling = false
         fastUpgrade = false
         probing = false
@@ -390,7 +390,7 @@ open class SocketEngine : NSObject, URLSessionDelegate, SocketEnginePollable, So
         DefaultSocketLogger.Logger.log("Flushing probe wait", type: SocketEngine.logType)
 
         for waiter in probeWait {
-            write(waiter.msg, withType: waiter.type, withData: waiter.data, completion:waiter.completion)
+            write(waiter.msg, withType: waiter.type, withData: waiter.data)
         }
 
         probeWait.removeAll(keepingCapacity: false)
@@ -404,7 +404,7 @@ open class SocketEngine : NSObject, URLSessionDelegate, SocketEnginePollable, So
         guard let ws = self.ws else { return }
 
         for msg in postWait {
-            ws.write(string: msg.msg, completion: msg.completion)
+            ws.write(string: msg)
         }
 
         postWait.removeAll(keepingCapacity: false)
@@ -550,7 +550,7 @@ open class SocketEngine : NSObject, URLSessionDelegate, SocketEnginePollable, So
         }
 
         pongsMissed += 1
-        write("", withType: .ping, withData: [], completion: {})
+        write("", withType: .ping, withData: [])
 
         engineQueue.asyncAfter(deadline: .now() + .milliseconds(pingInterval)) {[weak self, id = self.sid] in
             // Make sure not to ping old connections
@@ -606,7 +606,7 @@ open class SocketEngine : NSObject, URLSessionDelegate, SocketEnginePollable, So
             DefaultSocketLogger.Logger.log("Upgrading transport to WebSockets", type: SocketEngine.logType)
 
             fastUpgrade = true
-            sendPollMessage("", withType: .noop, withData: [], completion: {})
+            sendPollMessage("", withType: .noop, withData: [])
             // After this point, we should not send anymore polling messages
         }
     }
@@ -616,15 +616,11 @@ open class SocketEngine : NSObject, URLSessionDelegate, SocketEnginePollable, So
     /// - parameter msg: The message to send.
     /// - parameter type: The type of this message.
     /// - parameter data: Any data that this message has.
-    /// - parameter completion: Callback called on transport write completion.
-    open func write(_ msg: String, withType type: SocketEnginePacketType, withData data: [Data], completion: @escaping () -> ()) {
+    open func write(_ msg: String, withType type: SocketEnginePacketType, withData data: [Data]) {
         engineQueue.async {
-            guard self.connected else {
-                completion()
-                return
-            }
+            guard self.connected else { return }
             guard !self.probing else {
-                self.probeWait.append((msg, type, data, completion))
+                self.probeWait.append((msg, type, data))
 
                 return
             }
@@ -632,11 +628,11 @@ open class SocketEngine : NSObject, URLSessionDelegate, SocketEnginePollable, So
             if self.polling {
                 DefaultSocketLogger.Logger.log("Writing poll: \(msg) has data: \(data.count != 0)",
                                                type: SocketEngine.logType)
-                self.sendPollMessage(msg, withType: type, withData: data, completion: completion)
+                self.sendPollMessage(msg, withType: type, withData: data)
             } else {
                 DefaultSocketLogger.Logger.log("Writing ws: \(msg) has data: \(data.count != 0)",
                                                type: SocketEngine.logType)
-                self.sendWebSocketMessage(msg, withType: type, withData: data, completion: completion)
+                self.sendWebSocketMessage(msg, withType: type, withData: data)
             }
         }
     }

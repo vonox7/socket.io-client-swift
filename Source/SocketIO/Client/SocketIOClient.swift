@@ -213,7 +213,7 @@ open class SocketIOClient : NSObject, SocketIOClientSpec {
     /// - parameter items: The items to send with this event. May be left out.
     open func emit(_ event: String, _ items: SocketData...) {
         do {
-            try emit(event, with: items.map({ try $0.socketRepresentation() }), completion: {})
+            try emit(event, with: items.map({ try $0.socketRepresentation() }))
         } catch {
             DefaultSocketLogger.Logger.error("Error creating socketRepresentation for emit: \(event), \(items)",
                                              type: logType)
@@ -228,17 +228,7 @@ open class SocketIOClient : NSObject, SocketIOClientSpec {
     /// - parameter items: The items to send with this event. Send an empty array to send no data.
     @objc
     open func emit(_ event: String, with items: [Any]) {
-        emit([event] + items, completion: {})
-    }
-    
-    /// Same as emit, but meant for Objective-C
-    ///
-    /// - parameter event: The event to send.
-    /// - parameter items: The items to send with this event. Send an empty array to send no data.
-    /// - parameter completion: Callback called on transport write completion.
-    @objc
-    open func emit(_ event: String, with items: [Any], completion: @escaping () -> ()) {
-        emit([event] + items, completion: completion)
+        emit([event] + items)
     }
 
     /// Sends a message to the server, requesting an ack.
@@ -294,9 +284,8 @@ open class SocketIOClient : NSObject, SocketIOClientSpec {
         return createOnAck([event] + items)
     }
 
-    func emit(_ data: [Any], ack: Int? = nil, binary: Bool = true, isAck: Bool = false, completion: (() -> ())? = nil) {
+    func emit(_ data: [Any], ack: Int? = nil, binary: Bool = true, isAck: Bool = false) {
         guard status == .connected else {
-            completion?();
             handleClientEvent(.error, data: ["Tried emitting when not connected"])
             return
         }
@@ -306,7 +295,7 @@ open class SocketIOClient : NSObject, SocketIOClientSpec {
 
         DefaultSocketLogger.Logger.log("Emitting: \(str), Ack: \(isAck)", type: logType)
 
-        manager?.engine?.send(str, withData: packet.binary, completion: completion)
+        manager?.engine?.send(str, withData: packet.binary)
     }
 
     /// Call when you wish to tell the server that you've received the event for `ack`.
